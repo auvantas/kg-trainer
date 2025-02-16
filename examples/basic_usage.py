@@ -1,160 +1,105 @@
 """
-Example script demonstrating advanced reasoning capabilities of the Knowledge Graph system.
-This example shows:
-1. Complex multi-hop reasoning
-2. Metacognitive analysis
-3. 'A-ha' moment detection
-4. Confidence-based filtering
+Example script demonstrating basic usage of the Knowledge Graph Training system.
+This example shows how to:
+1. Prepare data
+2. Train a model
+3. Make predictions
+4. Visualize results
 """
 
-import torch
 import pandas as pd
+import torch
 from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
 from models.spr_rcc_model import KGModel
-from models.rl_components import MetacognitiveModule, AhaDetector
-from predict import predict_relations
+from train import train, RLTrainer
+from visualize import create_knowledge_graph, visualize_graph
 
-def create_complex_kg():
-    """Create a more complex knowledge graph for testing reasoning capabilities"""
+# Example knowledge graph data
+def create_sample_data():
+    """Create a sample knowledge graph dataset"""
     data = {
         'head': [
-            # Physics concepts
-            'Quantum_Mechanics', 'Wave_Function', 'Particle_Physics',
-            'Quantum_Entanglement', 'Quantum_Superposition', 'Quantum_Field_Theory',
-            
-            # Scientists and their work
-            'Schrodinger', 'Einstein', 'Bohr',
-            'Heisenberg', 'Dirac', 'von_Neumann',
-            
-            # Institutions
-            'Cambridge', 'Princeton', 'Copenhagen_University',
-            'ETH_Zurich', 'Berlin_University', 'Vienna_University'
+            'Albert_Einstein', 'Physics', 'Quantum_Mechanics',
+            'Max_Planck', 'Relativity_Theory', 'Werner_Heisenberg',
+            'Copenhagen', 'Germany', 'ETH_Zurich'
         ],
         'relation': [
-            # Scientific relations
-            'describes', 'partOf', 'relatesTo',
-            'foundationalTo', 'explainsEffect', 'theoreticalBasisFor',
-            
-            # Personal relations
-            'discoveredBy', 'collaboratedWith', 'studiedAt',
-            'taughtAt', 'supervisedBy', 'influencedBy',
-            
-            # Institutional relations
-            'locatedIn', 'affiliatedWith', 'researchFocusOf',
-            'establishedBy', 'contemporaryWith', 'historicallyLinkedTo'
+            'field', 'subfield', 'discoveredBy',
+            'workedOn', 'proposedBy', 'bornIn',
+            'locatedIn', 'hasUniversity', 'employedAt'
         ],
         'tail': [
-            # Completing the triples
-            'Wave_Function', 'Quantum_Mechanics', 'Quantum_Entanglement',
-            'Quantum_Field_Theory', 'Particle_Physics', 'Quantum_Mechanics',
-            
-            'Wave_Function', 'Bohr', 'Cambridge',
-            'Quantum_Mechanics', 'Einstein', 'Schrodinger',
-            
-            'UK', 'USA', 'Denmark',
-            'Switzerland', 'Germany', 'Austria'
+            'Physics', 'Quantum_Mechanics', 'Max_Planck',
+            'Quantum_Mechanics', 'Albert_Einstein', 'Germany',
+            'Denmark', 'ETH_Zurich', 'Albert_Einstein'
         ]
     }
-    return pd.DataFrame(data)
-
-def analyze_reasoning_path(model, predictions, head_entity):
-    """Analyze the reasoning path and metacognitive behavior"""
-    print(f"\nAnalyzing reasoning for queries related to {head_entity}:")
-    
-    # Track metacognitive patterns
-    confidence_pattern = []
-    reasoning_times = []
-    aha_moments = []
-    
-    for pred in predictions:
-        confidence_pattern.append(pred['confidence'])
-        reasoning_times.append(pred['reasoning_info']['reasoning_time'])
-        if pred['reasoning_info'].get('had_aha_moment'):
-            aha_moments.append({
-                'entity': pred['entity'],
-                'improvement': pred['reasoning_info']['improvement']
-            })
-    
-    # Analyze patterns
-    print("\nMetacognitive Analysis:")
-    print(f"- Average confidence: {sum(confidence_pattern) / len(confidence_pattern):.4f}")
-    print(f"- Confidence trend: {'Increasing' if confidence_pattern[-1] > confidence_pattern[0] else 'Decreasing'}")
-    print(f"- Average reasoning time: {sum(reasoning_times) / len(reasoning_times):.4f}s")
-    print(f"- Number of 'a-ha' moments: {len(aha_moments)}")
-    
-    if aha_moments:
-        print("\n'A-ha' Moments Analysis:")
-        for moment in aha_moments:
-            print(f"- Entity: {moment['entity']}, Improvement: {moment['improvement']:.4f}")
-    
-    return {
-        'confidence_pattern': confidence_pattern,
-        'reasoning_times': reasoning_times,
-        'aha_moments': aha_moments
-    }
+    df = pd.DataFrame(data)
+    return df
 
 def main():
+    # Create output directory
     output_dir = Path('output')
     output_dir.mkdir(exist_ok=True)
     
-    # Create and save complex knowledge graph
-    print("Creating complex knowledge graph...")
-    df = create_complex_kg()
-    data_path = output_dir / 'complex_kg.csv'
+    # 1. Prepare data
+    print("Creating sample dataset...")
+    df = create_sample_data()
+    data_path = output_dir / 'sample_kg.csv'
     df.to_csv(data_path, index=False)
     
-    # Load trained model (assuming it's already trained)
-    model_path = output_dir / 'model.pt'
-    if not model_path.exists():
-        print(f"Please train the model first using basic_usage.py")
-        return
+    # 2. Train model
+    print("\nTraining model...")
+    class Args:
+        data_path = str(data_path)
+        output_path = str(output_dir / 'model.pt')
+        epochs = 10
+        batch_size = 4
+        embedding_dim = 128
+        learning_rate = 0.001
+        run_name = "example_run"
+        disable_wandb = True  # Disable wandb for example
     
-    model = torch.load(str(model_path))
+    args = Args()
+    train(args)
     
-    # Perform multi-hop reasoning
-    print("\nPerforming multi-hop reasoning...")
+    # 3. Make predictions
+    print("\nMaking predictions...")
+    model = torch.load(args.output_path)
     
-    # Example: Find connections between Quantum Mechanics and Scientists
-    queries = [
-        ('Quantum_Mechanics', 'discoveredBy'),
-        ('Wave_Function', 'discoveredBy'),
-        ('Schrodinger', 'studiedAt'),
-        ('Einstein', 'collaboratedWith')
-    ]
+    # Example prediction
+    head = "Albert_Einstein"
+    relation = "field"
     
-    all_predictions = {}
-    for head, relation in queries:
-        predictions = predict_relations(
-            model['model_state_dict'],
-            model['entity2id'],
-            model['relation2id'],
-            head,
-            relation,
-            top_k=5,
-            reasoning_threshold=0.6
-        )
-        all_predictions[f"{head}_{relation}"] = predictions
-        
-        print(f"\nQuery: {head} {relation}")
-        for pred in predictions:
-            print(f"\nPredicted: {pred['entity']}")
-            print(f"Confidence: {pred['confidence']:.4f}")
-            if pred['reasoning_info'].get('had_aha_moment'):
-                print("*** 'A-ha' moment detected! ***")
+    from predict import predict_relations
+    predictions = predict_relations(
+        model['model_state_dict'],
+        model['entity2id'],
+        model['relation2id'],
+        head,
+        relation,
+        top_k=3,
+        reasoning_threshold=0.5
+    )
     
-    # Analyze reasoning patterns
-    print("\nAnalyzing reasoning patterns across queries...")
-    for query, preds in all_predictions.items():
-        head = query.split('_')[0]
-        analysis = analyze_reasoning_path(model, preds, head)
-        
-        # Save analysis results
-        analysis_path = output_dir / f'reasoning_analysis_{head}.pt'
-        torch.save(analysis, str(analysis_path))
-        print(f"Analysis saved to {analysis_path}")
+    print(f"\nPredictions for {head} {relation}:")
+    for pred in predictions:
+        print(f"\nEntity: {pred['entity']}")
+        print(f"Confidence: {pred['confidence']:.4f}")
+        print("Reasoning Information:")
+        print(f"- Mistake Likelihood: {pred['reasoning_info']['mistake_likelihood']:.4f}")
+        print(f"- Reasoning Time: {pred['reasoning_info']['reasoning_time']:.4f}")
+        if pred['reasoning_info'].get('had_aha_moment'):
+            print(f"- Had 'a-ha' moment! Improvement: {pred['reasoning_info']['improvement']:.4f}")
+    
+    # 4. Visualize knowledge graph
+    print("\nCreating visualization...")
+    G = create_knowledge_graph(str(data_path))
+    visualize_graph(G, str(output_dir / 'knowledge_graph.png'))
+    print("Visualization saved to output/knowledge_graph.png")
 
 if __name__ == "__main__":
     main()
